@@ -1,5 +1,7 @@
 # OpenCode Cortex Mode
 
+> **Experimental:** This plugin is under active development and used in production-like workflows by the author, but it is still being tested. APIs, behavior, and the SDK surface may change without notice between releases. Use at your own risk and report issues on GitHub.
+
 Single-turn code orchestration plugin for [OpenCode](https://opencode.ai), based on the DeepSeek Harness (`dsh`) architecture. Instead of forcing the AI model through multiple atomic tool calls ("call tool -> wait -> call again -> wait", producing minutes of latency and thousands of accumulated tokens), Cortex Mode delivers a complete TypeScript/JavaScript SDK directly to the model.
 
 The model writes a script that runs locally in the OpenCode runtime in milliseconds, performing searches, file manipulation, logical filters, loops, and shell commands in **a single AI turn**.
