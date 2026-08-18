@@ -42,7 +42,7 @@ Cortex Mode does not replace model reasoning. It moves deterministic orchestrati
 
 ## Performance
 
-The performance figures below are **observed estimates, not guarantees**. Results depend on the task, the model, the provider's latency, the hardware, the context window, and the specific workflow being executed.
+The performance figures below are **analytical estimates, not guarantees**. Results depend on the task, the model, the provider's latency, the hardware, the context window, and the specific workflow being executed.
 
 ### What is being compared
 
@@ -56,12 +56,12 @@ The comparison is between two ways of completing the same multi-step task:
 1. **Reduction of inference round trips.** In native tool calling, an N-step workflow requires roughly N tool-call cycles, each with an LLM round trip. In Cortex Mode, the same workflow requires one generation and one runtime execution.
 2. **Reduction of intermediate context.** Tool outputs accumulate in the conversation history and are re-sent on every subsequent turn, so billed input grows with each step. Cortex Mode keeps intermediate data (file listings, search results, command logs) inside the runtime and returns only the summary.
 
-### Observed results
+### Estimated results
 
 Analytical estimates for representative scenarios (a multi-file refactor, a codebase audit, and a diagnose-and-fix pipeline) are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). On workflows dominated by deterministic operations, the estimates suggest:
 
-- **~11–15x lower estimated latency** compared to native tool calling on the same task;
-- **observed token reductions of ~90–95%** on some workflows.
+- **estimated ~11–15x lower latency** compared to native tool calling on the same task;
+- **estimated ~90–95% reduction in token usage** in some workflows.
 
 These numbers assume typical LLM round trips (8-15s per inference) and common tool-output sizes. They are workload-dependent and should be re-measured against a live provider for any specific use case. They are not claims about every task: tasks dominated by model reasoning rather than deterministic orchestration will see smaller differences.
 
