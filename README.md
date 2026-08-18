@@ -1,19 +1,69 @@
 # OpenCode Cortex Mode
 
-> **Experimental:** This plugin is under active development and used in production-like workflows by the author, but it is still being tested. APIs, behavior, and the SDK surface may change without notice between releases. Use at your own risk and report issues on GitHub.
+> **Experimental:** This plugin is under active development and is being tested. APIs, behavior, and the SDK surface may change without notice between releases. Use at your own risk and report issues on GitHub.
 
-Single-turn code orchestration plugin for [OpenCode](https://opencode.ai), based on the DeepSeek Harness (`dsh`) architecture. Instead of forcing the AI model through multiple atomic tool calls ("call tool -> wait -> call again -> wait", producing minutes of latency and thousands of accumulated tokens), Cortex Mode delivers a complete TypeScript/JavaScript SDK directly to the model.
+Cortex Mode is a single-turn code orchestration plugin for [OpenCode](https://opencode.ai), based on the DeepSeek Harness (`dsh`) architecture. Instead of driving the model through a sequence of individual tool calls, Cortex Mode provides a TypeScript/JavaScript SDK that the model can use to generate a single program covering an entire workflow.
 
-The model writes a script that runs locally in the OpenCode runtime in milliseconds, performing searches, file manipulation, logical filters, loops, and shell commands in **a single AI turn**.
+The program runs locally in the OpenCode runtime and returns one consolidated result. Searches, file manipulation, logical filters, loops, and shell commands execute inside the runtime without requiring a new inference round per step.
+
+## How it works
+
+**Traditional agent (native tool calling):**
+
+```
+LLM -> tool call -> result -> LLM -> tool call -> result -> LLM -> ...
+```
+
+Every step of the workflow requires a new inference round, and every intermediate result (file listings, search output, command logs) is written back into the conversation context and re-sent on subsequent turns.
+
+**Cortex Mode:**
+
+```
+LLM -> generated program -> Cortex runtime executes -> consolidated result -> LLM
+                              loops, filters, searches,
+                              file transformations,
+                              shell commands
+```
+
+The runtime performs the deterministic parts of the workflow — iterating, filtering, searching, transforming multiple files, running commands — and only the consolidated result returns to the model.
+
+### What Cortex Mode does not replace
+
+Cortex Mode does not replace model reasoning. It moves deterministic orchestration from the model to the runtime: work that does not require inference (loops, filters, searches, multi-file processing, transformations, command execution, composite workflows) runs locally. Reasoning, planning, and judgment remain the model's responsibility.
 
 ## Features
 
-- **Up to 10x latency reduction:** From 1-2 minutes down to under 4 seconds per task.
-- **80-95% token savings:** Intermediate listings and temporary data never enter the LLM context.
-- **Smart spill and head-tail compression:** Protection against oversized outputs that could overflow the conversation context.
+- **Fewer inference round trips:** A workflow that would require several sequential tool calls can complete in a single AI turn.
+- **Reduced context growth:** Intermediate outputs are consumed inside the runtime; only the consolidated result enters the conversation context.
+- **Deterministic orchestration in the runtime:** Loops, filters, searches, file transformations, and shell commands run as one generated program instead of one tool call per step.
 - **Persistent session state (`state`):** In-memory data cache shared across execution turns.
 - **Native TypeScript and JavaScript support:** Instant transpilation with Bun or Node.js.
 - **Full OpenCode compatibility:** Drop-in at `.config/opencode/plugin/code_mode.js`.
+
+## Performance
+
+The performance figures below are **observed estimates, not guarantees**. Results depend on the task, the model, the provider's latency, the hardware, the context window, and the specific workflow being executed.
+
+### What is being compared
+
+The comparison is between two ways of completing the same multi-step task:
+
+- **Native tool calling:** the model issues one tool call per step; each step requires an inference round and each tool result is appended to the conversation history.
+- **Cortex Mode:** the model generates a single program; the runtime executes the deterministic steps locally and returns one consolidated result.
+
+### Where the gain comes from
+
+1. **Reduction of inference round trips.** In native tool calling, an N-step workflow requires roughly N tool-call cycles, each with an LLM round trip. In Cortex Mode, the same workflow requires one generation and one runtime execution.
+2. **Reduction of intermediate context.** Tool outputs accumulate in the conversation history and are re-sent on every subsequent turn, so billed input grows with each step. Cortex Mode keeps intermediate data (file listings, search results, command logs) inside the runtime and returns only the summary.
+
+### Observed results
+
+Analytical estimates for representative scenarios (a multi-file refactor, a codebase audit, and a diagnose-and-fix pipeline) are documented in [docs/BENCHMARKS.md](docs/BENCHMARKS.md). On workflows dominated by deterministic operations, the estimates suggest:
+
+- **~11–15x lower estimated latency** compared to native tool calling on the same task;
+- **observed token reductions of ~90–95%** on some workflows.
+
+These numbers assume typical LLM round trips (8-15s per inference) and common tool-output sizes. They are workload-dependent and should be re-measured against a live provider for any specific use case. They are not claims about every task: tasks dominated by model reasoning rather than deterministic orchestration will see smaller differences.
 
 ## Installation
 
