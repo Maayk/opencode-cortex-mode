@@ -90,7 +90,10 @@ export class CodeModeSandbox {
       timer = setTimeout(() => {
         finish({
           success: false,
-          output: `[Execution Error]: Code execution exceeded timeout limit of ${timeoutMs}ms (Process terminated by watchdog)`,
+          output:
+            `[Execution Timeout]: Code execution exceeded timeout limit of ${timeoutMs}ms and was terminated by the watchdog. ` +
+            `Likely causes: an infinite loop (e.g. while(true) without a bound), unbounded recursion, or a search/list over a huge directory tree. ` +
+            `Rewrite the program with bounded loops, result caps (maxResults, maxLines, maxBytes), and try/catch around IO operations.`,
           logs: [],
           durationMs: Date.now() - startTime,
           error: `Timeout after ${timeoutMs}ms`,
@@ -157,8 +160,14 @@ export class CodeModeSandbox {
             }
             outputBody += `[Execution Error]: ${msg.error || "Unknown Error"}`;
             if (msg.stack) {
-              outputBody += `\n${msg.stack}`;
+              const stackLines = msg.stack.split("\n");
+              const head = stackLines.slice(0, 8).join("\n");
+              const omitted = stackLines.length > 8 ? `\n... (${stackLines.length - 8} more stack lines omitted)` : "";
+              outputBody += `\n${head}${omitted}`;
             }
+            outputBody +=
+              `\n\n[Debug Hint]: The stack refers to transpiled code, so line numbers may not match your source. ` +
+              `Check the failing operation (missing file, permission denied, wrong type at runtime) and rewrite with try/catch, existence checks, and result caps.`;
 
             const truncated = smartTruncate(outputBody, {
               maxLines: options.maxLogLines,

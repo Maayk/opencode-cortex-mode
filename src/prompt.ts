@@ -74,4 +74,10 @@ declare const console: { log: (...args: any[]) => void; warn: (...args: any[]) =
 2. **Parallelize with Promise.all**: When reading or editing multiple independent files, use \`await Promise.all(files.map(f => ...))\`.
 3. **Log concisely**: Output clear summaries using \`console.log(...)\`.
 4. **Use \`state\` for multi-step memory**: If you calculate or fetch something heavy that might be needed in subsequent turns, assign it to \`state.myVar = ...\`.
+
+## Error Handling and Limits:
+1. **Hard timeout**: A code_mode call runs in a sandbox with a default hard limit of 60 seconds (adjustable via the \`timeout\` argument). Keep loops bounded, cap iterations, and avoid unbounded recursion or recursive searches over huge directory trees. Pass \`timeout\` to bash calls that may run long.
+2. **Guard fs, search, and bash calls**: These fail often (missing file, permission denied, command timeout). Always wrap fallible operations in try/catch; on failure, log WHAT failed (operation + path/command) and the error to console, then continue or rethrow with that context. Console logs are returned to you when a script fails, so log enough to debug. Don't wrap trivial calls that cannot fail. Prefer \`fs.exists()\` before reads, \`options.maxBytes\` on read, \`maxResults\` on search/glob, and a \`timeout\` on bash calls.
+3. **Types are stripped, not checked**: Your TypeScript annotations are removed before execution; there is no compile-time type checking. Write code that would run correctly as plain JavaScript (no reliance on the compiler catching type errors).
+4. **On timeout, do not blindly retry**: If the runtime reports a timeout, the previous code likely looped or scanned too broadly. Rewrite with bounded loops and result caps instead of resubmitting the same program.
 `.trim();

@@ -47,14 +47,19 @@ async function execute() {
   const fsSDK = {
     read: async (filePath: string, options: any = {}) => {
       const resolved = resolvePath(filePath);
-      const content = await fs.readFile(resolved, options.encoding || "utf8");
+      let content = await fs.readFile(resolved, options.encoding || "utf8");
+      let truncatedByMaxBytes = false;
+      if (options.maxBytes !== undefined && content.length > options.maxBytes) {
+        content = content.slice(0, options.maxBytes);
+        truncatedByMaxBytes = true;
+      }
       if (options.startLine !== undefined || options.endLine !== undefined) {
         const lines = content.split("\n");
         const start = Math.max(1, options.startLine || 1) - 1;
         const end = options.endLine !== undefined ? Math.min(lines.length, options.endLine) : lines.length;
         return lines.slice(start, end).join("\n");
       }
-      return content;
+      return truncatedByMaxBytes ? content + "\n... [output truncated by maxBytes]" : content;
     },
     write: async (filePath: string, content: string, options: any = {}) => {
       const resolved = resolvePath(filePath);
@@ -120,9 +125,12 @@ async function execute() {
     list: async (dirPath = ".", recursive = false) => {
       const resolved = resolvePath(dirPath);
       const results: any[] = [];
+      const MAX_ENTRIES = 10000;
       async function walk(curr: string) {
+        if (results.length >= MAX_ENTRIES) return;
         const entries = await fs.readdir(curr, { withFileTypes: true });
         for (const e of entries) {
+          if (results.length >= MAX_ENTRIES) return;
           const full = path.join(curr, e.name);
           const rel = path.relative(resolved, full).replace(/\\/g, "/");
           results.push({ name: e.name, path: rel, isDirectory: e.isDirectory(), isFile: e.isFile() });
