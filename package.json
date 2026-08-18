@@ -1,6 +1,6 @@
 ﻿{
   "name": "opencode-cortex-mode",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cortex Mode - single-turn code orchestration plugin for OpenCode. DeepSeek Harness Engine architecture: executes multi-step TypeScript workflows locally in one AI turn, saving 80-95% tokens and cutting latency up to 15x.",
   "main": "dist/index.js",
   "module": "dist/index.mjs",

@@ -160,5 +160,7 @@ export interface SandboxOptions {
   timeoutMs?: number;
   maxLogLines?: number;
   maxOutputChars?: number;
+  maxOldGenerationSizeMb?: number;
+  maxMemoryDeltaMb?: number;
   abortSignal?: AbortSignal;
 }

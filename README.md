@@ -38,6 +38,8 @@ Cortex Mode does not replace model reasoning. It moves deterministic orchestrati
 - **Deterministic orchestration in the runtime:** Loops, filters, searches, file transformations, and shell commands run as one generated program instead of one tool call per step.
 - **Persistent session state (`state`):** In-memory data cache shared across execution turns.
 - **Native TypeScript and JavaScript support:** Instant transpilation with Bun or Node.js.
+- **Resource-guarded runtime:** 60s timeout, memory watchdog, console budget, and capped recursive listings; runaway scripts are terminated with actionable diagnostics.
+- **Deterministic SDK behavior:** `glob`/`list` results are alphabetically sorted, and spawned shell processes are cleaned up when execution ends.
 - **Full OpenCode compatibility:** Drop-in at `.config/opencode/plugin/code_mode.js`.
 
 ## Performance
@@ -127,6 +129,7 @@ bun test
 - `tests/sandbox-timeout.test.ts`: Timeout protection and execution error validation.
 - `tests/state.test.ts`: Cross-turn state persistence validation.
 - `tests/e2e-workflow.test.ts`: Full multi-step refactor flow in a single turn.
+- `tests/child-cleanup.test.ts`: Spawned process tree cleanup on worker termination.
 
 ## Documentation
 

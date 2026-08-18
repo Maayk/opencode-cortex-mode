@@ -39,6 +39,8 @@ const lines = await read("src/large.log", { startLine: 100, endLine: 150 });
 const truncated = await read("data.bin", { maxBytes: 1024 });
 ```
 
+`maxBytes` truncates oversized content and appends a `... [output truncated by maxBytes]` marker; line ranges are applied to the truncated content.
+
 ### 2.2 `write(filePath, content, options?)`
 
 Creates or overwrites a file, creating parent directories automatically when needed.
@@ -79,6 +81,8 @@ for (const item of items) {
 }
 ```
 
+Entries are returned in deterministic alphabetical order. Recursive listing stops after 10,000 entries and skips `node_modules` and `.git`.
+
 ---
 
 ## 3. Search SDK (`search`, `glob`, `grep`)
@@ -93,6 +97,8 @@ const allConfigs = await glob(["config/*.json", "packages/**/config.json"], {
   ignore: ["**/node_modules/**", "**/dist/**"]
 });
 ```
+
+Results are returned in deterministic alphabetical order and capped at `maxResults` (default 1,000); `node_modules`, `.git`, and `dist` are ignored by default.
 
 ### 3.2 `grep(query | RegExp, options?)`
 
@@ -120,6 +126,8 @@ if (res.exitCode !== 0) {
   console.error("Tests failed:", res.stderr);
 }
 ```
+
+Commands run with a 60-second default timeout (`options.timeout` overrides). Spawned processes are tracked by the runtime and killed along with their tree when the execution is terminated (timeout, memory limit, abort, or completion); on Unix, commands run in their own process group.
 
 ---
 
@@ -149,3 +157,19 @@ state.processedCount = 0;
 // Turn 2:
 console.log("Known routes:", state.scannedRoutes.length);
 ```
+
+State is scoped to the session and automatically cleared when the session ends; idle sessions are pruned once more than 100 accumulate.
+
+---
+
+## 7. Sandbox Limits and Error Semantics
+
+| Limit | Default | Behavior on breach |
+|---|---|---|
+| Wall-clock timeout | 60s (`timeout` arg) | `[Execution Timeout]` with likely-cause diagnosis (infinite loop, unbounded recursion, oversized scans) |
+| Host memory delta | 768MB (`maxMemoryDeltaMb` arg) | `[Execution Error]` memory-budget message; worker terminated (RSS sampled every 250ms; Node also enforces a 512MB V8 heap via `resourceLimits`) |
+| Console output | 500KB cumulative | Further output suppressed with a marker line |
+| Result truncation | 150 lines / 40,000 chars | Head-tail compaction via `smartTruncate` |
+| Stack traces | 8 lines | Truncated with a note that transpiled line numbers may not match the source |
+
+Failures always include a `[Debug Hint]` steering the model toward the cause (missing file, permission, runtime type error) and the remediation pattern (try/catch, existence checks, result caps).

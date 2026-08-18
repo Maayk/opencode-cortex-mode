@@ -81,7 +81,8 @@ describe("E2E Real-world Multi-step Refactoring Workflow", () => {
     const res = await sandbox.run(multiStepScript);
     expect(res.success).toBe(true);
     expect(res.output).toContain("Discovered config files count: 3");
-    expect(res.output).toContain("Updated packages: api, auth");
+    expect(res.output).toContain("Updated packages:");
+    expect(res.result.packages.sort()).toEqual(["api", "auth"]);
     expect(res.output).toContain("Refactor verification passed");
     expect(res.result.updatedCount).toBe(2);
 

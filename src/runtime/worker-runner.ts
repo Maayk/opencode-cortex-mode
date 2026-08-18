@@ -9,28 +9,43 @@ import { spawn } from "node:child_process";
 
 const logs: string[] = [];
 
+const MAX_LOG_BYTES = 500_000;
+let logBytes = 0;
+let logCapHit = false;
+
+function pushLog(text: string) {
+  if (logCapHit) return;
+  logBytes += Buffer.byteLength(text, "utf8");
+  if (logBytes > MAX_LOG_BYTES) {
+    logCapHit = true;
+    logs.push("[Code Mode]: log output cap reached, further console output suppressed.");
+    return;
+  }
+  logs.push(text);
+}
+
 const customConsole = {
   log: (...args: any[]) => {
-    logs.push(args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
+    pushLog(args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
   },
   warn: (...args: any[]) => {
-    logs.push("[WARN] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
+    pushLog("[WARN] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
   },
   error: (...args: any[]) => {
-    logs.push("[ERROR] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
+    pushLog("[ERROR] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
   },
   info: (...args: any[]) => {
-    logs.push("[INFO] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
+    pushLog("[INFO] " + args.map((a) => (typeof a === "string" ? a : util.inspect(a, { depth: 4, colors: false }))).join(" "));
   },
   table: (data: any) => {
     try {
-      logs.push(JSON.stringify(data, null, 2));
+      pushLog(JSON.stringify(data, null, 2));
     } catch {
-      logs.push(String(data));
+      pushLog(String(data));
     }
   },
   dir: (item: any) => {
-    logs.push(util.inspect(item, { depth: 4, colors: false }));
+    pushLog(util.inspect(item, { depth: 4, colors: false }));
   },
 };
 
@@ -128,7 +143,9 @@ async function execute() {
       const MAX_ENTRIES = 10000;
       async function walk(curr: string) {
         if (results.length >= MAX_ENTRIES) return;
-        const entries = await fs.readdir(curr, { withFileTypes: true });
+        const entries = (await fs.readdir(curr, { withFileTypes: true })).sort((a, b) =>
+          a.name.localeCompare(b.name)
+        );
         for (const e of entries) {
           if (results.length >= MAX_ENTRIES) return;
           const full = path.join(curr, e.name);
@@ -172,6 +189,7 @@ async function execute() {
         } catch {
           return;
         }
+        dirents.sort((a, b) => a.name.localeCompare(b.name));
         for (const d of dirents) {
           if (matches.length >= maxResults) break;
           const full = path.join(current, d.name);
@@ -248,7 +266,17 @@ async function execute() {
 
     const start = Date.now();
     return new Promise((res, rej) => {
-      const child = spawn(shell, shellArgs, { cwd, env: { ...process.env, ...options.env }, windowsHide: true });
+      const child = spawn(shell, shellArgs, {
+        cwd,
+        env: { ...process.env, ...options.env },
+        windowsHide: true,
+        detached: process.platform !== "win32",
+      });
+      if (child.pid !== undefined) {
+        try {
+          parentPort?.postMessage({ type: "child-spawned", pid: child.pid });
+        } catch {}
+      }
       let stdout = "";
       let stderr = "";
       const timer = setTimeout(() => {
@@ -258,8 +286,12 @@ async function execute() {
           } catch {}
         } else {
           try {
-            child.kill("SIGKILL");
-          } catch {}
+            process.kill(-(child.pid as number), "SIGKILL");
+          } catch {
+            try {
+              child.kill("SIGKILL");
+            } catch {}
+          }
         }
         rej(new Error("Command timed out after " + timeout + "ms: " + cmd));
       }, timeout);
@@ -268,10 +300,20 @@ async function execute() {
       child.stderr?.on("data", (c) => (stderr += c.toString("utf8")));
       child.on("error", (e) => {
         clearTimeout(timer);
+        if (child.pid !== undefined) {
+          try {
+            parentPort?.postMessage({ type: "child-exited", pid: child.pid });
+          } catch {}
+        }
         rej(e);
       });
       child.on("close", (code) => {
         clearTimeout(timer);
+        if (child.pid !== undefined) {
+          try {
+            parentPort?.postMessage({ type: "child-exited", pid: child.pid });
+          } catch {}
+        }
         res({
           command: cmd,
           stdout: stdout.trimEnd(),

@@ -1,6 +1,7 @@
 ﻿import { Worker } from "node:worker_threads";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
 import type { CodeModeSDK, ExecutionResult, SandboxOptions } from "../types.js";
 import { transpileTypeScript } from "./transpiler.js";
 import { formatValue, smartTruncate, estimateTokens } from "../utils/truncator.js";
@@ -41,12 +42,38 @@ export class CodeModeSandbox {
       let settled = false;
       let worker: Worker | null = null;
       let timer: NodeJS.Timeout | null = null;
+      let memTimer: NodeJS.Timeout | null = null;
+      const activeChildPids = new Set<number>();
+
+      const killChildTree = (pid: number) => {
+        if (process.platform === "win32") {
+          try {
+            spawn("taskkill", ["/F", "/T", "/PID", String(pid)], { windowsHide: true, stdio: "ignore" });
+          } catch {}
+        } else {
+          try {
+            process.kill(-pid, "SIGKILL");
+          } catch {
+            try {
+              process.kill(pid, "SIGKILL");
+            } catch {}
+          }
+        }
+      };
 
       const cleanup = () => {
         if (timer) {
           clearTimeout(timer);
           timer = null;
         }
+        if (memTimer) {
+          clearInterval(memTimer);
+          memTimer = null;
+        }
+        for (const pid of activeChildPids) {
+          killChildTree(pid);
+        }
+        activeChildPids.clear();
         if (worker) {
           worker.terminate().catch(() => {});
           worker = null;
@@ -102,6 +129,7 @@ export class CodeModeSandbox {
 
       try {
         const workerPath = getWorkerPath();
+        const baselineRss = process.memoryUsage().rss;
 
         worker = new Worker(workerPath, {
           workerData: {
@@ -111,9 +139,24 @@ export class CodeModeSandbox {
             sessionID: this.sdk.sessionID,
             initialState: this.sdk.state,
           },
+          resourceLimits: {
+            maxOldGenerationSizeMb: options.maxOldGenerationSizeMb ?? 512,
+          },
         });
 
         worker.on("message", (msg: any) => {
+          if (msg?.type === "child-spawned" && typeof msg.pid === "number") {
+            if (settled) {
+              killChildTree(msg.pid);
+            } else {
+              activeChildPids.add(msg.pid);
+            }
+            return;
+          }
+          if (msg?.type === "child-exited" && typeof msg.pid === "number") {
+            activeChildPids.delete(msg.pid);
+            return;
+          }
           const durationMs = Date.now() - startTime;
           const logs: string[] = msg.logs || [];
 
@@ -206,6 +249,26 @@ export class CodeModeSandbox {
             });
           }
         });
+
+        // Memory watchdog: Bun ignores worker resourceLimits, so sample host RSS
+        // and terminate the worker when the process grows beyond the allowed delta.
+        const memLimitMb = options.maxMemoryDeltaMb ?? 768;
+        memTimer = setInterval(() => {
+          if (settled) return;
+          const deltaMb = (process.memoryUsage().rss - baselineRss) / 1048576;
+          if (deltaMb > memLimitMb) {
+            finish({
+              success: false,
+              output:
+                `[Execution Error]: Script exceeded the memory budget (${memLimitMb}MB of additional host memory) and was terminated. ` +
+                `Likely causes: an unbounded allocation loop or accumulating large in-memory structures. ` +
+                `Rewrite with bounded loops and avoid building oversized arrays/strings.`,
+              logs: [],
+              durationMs: Date.now() - startTime,
+              error: `Memory limit exceeded (${Math.round(deltaMb)}MB > ${memLimitMb}MB)`,
+            });
+          }
+        }, 250);
       } catch (err: any) {
         finish({
           success: false,

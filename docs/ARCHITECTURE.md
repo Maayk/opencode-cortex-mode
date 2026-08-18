@@ -115,6 +115,24 @@ opencode-cortex-mode/
 4. **SDK and State Instantiation:**
    `createCodeModeSDK` instantiates the `fs`, `search`, `bash`, and `git` layers and injects the session-specific `state`.
 5. **Transpilation and Execution:**
-   `CodeModeSandbox` transpiles TypeScript in milliseconds, isolates `console`, and runs the async function under a timeout watchdog and `AbortSignal`.
+   `CodeModeSandbox` transpiles TypeScript in milliseconds, isolates `console`, and runs the async function in a worker guarded by a timeout watchdog, a memory watchdog, a console-output budget, and an `AbortSignal`.
 6. **Smart Truncation and Return:**
    Logs and return values are compacted by `smartTruncate` and returned to OpenCode with interface metadata (e.g. `Code Mode (0.24s)`).
+
+---
+
+## 5. Sandbox Hardening and Failure Semantics
+
+The worker sandbox applies layered protections so a misbehaving generated program cannot take down the host:
+
+| Layer | Mechanism | Default |
+|---|---|---|
+| Wall-clock | Timeout watchdog in the host (`setTimeout`) | 60s |
+| Memory | Host RSS watchdog sampling every 250ms + V8 heap `resourceLimits` (Node) | +768MB delta / 512MB heap |
+| Console flood | Incremental byte budget inside the worker's `customConsole` | 500KB |
+| Output | Head-tail `smartTruncate` on the consolidated result | 150 lines / 40,000 chars |
+| Recursion | `list(recursive)` entry cap; `glob` result cap | 10,000 entries / 1,000 results |
+| Processes | Spawned bash children are tracked via `postMessage` PIDs and tree-killed on any termination path | — |
+| Determinism | `readdir` entries sorted before iteration in `glob` and `list` | — |
+
+Bun ignores `resourceLimits`, so the host RSS watchdog is the operative memory cap in the OpenCode runtime; Node additionally enforces the V8 heap cap. Every failure result carries an actionable diagnostic (`[Execution Timeout]` explains likely causes, `[Execution Error]` truncates stacks to 8 lines with a debug hint) so the model can rewrite instead of resubmitting. Session `state` is cleared on `session.end` and pruned when idle sessions accumulate.

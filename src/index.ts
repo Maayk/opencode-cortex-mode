@@ -78,11 +78,12 @@ export const CodeModePlugin = async (ctx: PluginInput) => {
     },
     event: async (input: any) => {
       const ev = input?.event ?? input;
-      if (ev?.type === "session.idle" || ev?.type === "session.end") {
-        const sessionID = ev.properties?.sessionID;
-        if (sessionID) {
-          SessionStateManager.getInstance().pruneOldSessions();
-        }
+      const sessionID = ev?.properties?.sessionID;
+      if (!sessionID) return;
+      if (ev?.type === "session.end") {
+        SessionStateManager.getInstance().clearState(sessionID);
+      } else if (ev?.type === "session.idle") {
+        SessionStateManager.getInstance().pruneOldSessions();
       }
     },
     "experimental.chat.system.transform": async (input, output) => {
